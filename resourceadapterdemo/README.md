@@ -1,7 +1,7 @@
 Resource Adapter Demo
 ======================
 
-SAPResourceAdapter - contains the adapter
+SAPConnector - contains the Resource Adapter
 
 SAPTest - contains the EAR
 
