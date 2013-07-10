@@ -3,6 +3,10 @@
     <connection-definitions>
         <connection-definition
             class-name="ch.maxant.jca_demo.sapresourceadapter.SAPManagedConnectionFactory"
-            jndi-name="java:/eis/SAPResource" />
+            jndi-name="java:/eis/SAPResourceAdapter">
+            <recovery>
+                <recover-plugin class-name="ch.maxant.jca_demo.sapresourceadapter.SAPResourceAdapter" />
+            </recovery>
+        </connection-definition>
     </connection-definitions>
 </ironjacamar>

@@ -1,12 +1,7 @@
 package ch.maxant.jca_demo.sapresourceadapter
 
-abstract trait SAPConnection {
+abstract trait SAPConnection extends AutoCloseable {
 
-    /**
-     * HelloWorld
-     * @return String
-     */
-    def helloWorld(): String
     /**
      * HelloWorld
      * @param name A name

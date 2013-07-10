@@ -14,21 +14,39 @@ import javax.resource.spi.ConnectionEvent
 import java.util.logging.Logger
 import java.io.PrintWriter
 import scala.beans.BeanProperty
+import java.util.logging.Level
+import javax.transaction.xa.Xid
+import java.io.Serializable
 
-class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConnection {
+/**
+ * there is an assumption here that instances of this class are not thread safe
+ * in that they can only be used one at a time.  TRY-CONFIRM or TRY-CANCEL.
+ * The class contains logic to ensure this.
+ */
+class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConnection with Serializable {
 
     private val log = Logger.getLogger("SAPManagedConnectionFactory")
 
     /** The logwriter */
     @BeanProperty
-    var logWriter: PrintWriter = _    
-    
+    var logWriter: PrintWriter = _
+
     /** Listeners */
-    val listeners = ListBuffer[ConnectionEventListener]()
+    private val listeners = ListBuffer[ConnectionEventListener]()
 
     /** Connection */
-    var connection: Object = _
+    private var connection: SAPConnection = _
 
+    //TODO take from pool - does container help here? or is it already pooled, since its a container managed connection?
+    //TODO or inject from container?
+    val webService: SAPWebService = new SAPWebService
+    
+    /** was the call to TRY successful? (tristate, null means ready for new connection) */
+    private var tryWasSuccessful: java.lang.Boolean = null
+
+    /** the current transaction ID */
+    private var currentTxId: String = null
+    
     /**
      * Creates a new connection handle for the underlying physical connection
      * represented by the ManagedConnection instance.
@@ -41,10 +59,13 @@ class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConn
     @throws(classOf[ResourceException])
     def getConnection(subject: Subject,
                       cxRequestInfo: ConnectionRequestInfo): Object =
-        {
-            connection = new SAPConnectionImpl(this, mcf)
-            connection
-        }
+    {
+        if(currentTxId == null) throw new IllegalStateException("transaction not started?")
+        if(tryWasSuccessful != null) throw new IllegalStateException("did you forget to call close?")
+        
+        connection = new SAPConnectionImpl(this, mcf)
+        connection
+    }
 
     /**
      * Used by the container to change the association of an
@@ -53,9 +74,11 @@ class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConn
      * @param connection Application-level connection handle
      * @throws ResourceException generic exception if operation fails
      */
+
     @throws(classOf[ResourceException])
     def associateConnection(connection: Object) {
-        this.connection = connection;
+        if (!connection.isInstanceOf[SAPConnection]) throw new IllegalArgumentException("Connection must be of type SAPConnection instead of " + connection.getClass)
+        this.connection = connection.asInstanceOf[SAPConnection]
     }
 
     /**
@@ -66,7 +89,10 @@ class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConn
      */
     @throws(classOf[ResourceException])
     def cleanup() {
-        println("cleaning up managed connection")
+        log.log(Level.INFO, "cleaning up managed connection")
+
+        currentTxId = null
+        tryWasSuccessful = null
     }
 
     /**
@@ -77,7 +103,10 @@ class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConn
     @throws(classOf[ResourceException])
     def destroy() {
         this.connection = null
+        currentTxId = null
+        tryWasSuccessful = null
     }
+
     /**
      * Adds a connection event listener to the ManagedConnection instance.
      *
@@ -88,6 +117,7 @@ class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConn
             throw new IllegalArgumentException("Listener is null")
         listeners += listener
     }
+
     /**
      * Removes an already registered connection event listener
      * from the ManagedConnection instance.
@@ -108,9 +138,11 @@ class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConn
      */
     @throws(classOf[ResourceException])
     def getLocalTransaction(): LocalTransaction =
-        {
-            throw new NotSupportedException("LocalTransaction not supported");
-        }
+    {
+        //TODO impl this too
+        throw new NotSupportedException("LocalTransaction not supported");
+    }
+    
     /**
      * Returns an <code>javax.transaction.xa.XAresource</code> instance.
      *
@@ -119,9 +151,11 @@ class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConn
      */
     @throws(classOf[ResourceException])
     def getXAResource(): XAResource =
-        {
-            if (true) throw new RuntimeException("IMPL ME!") else null
-        }
+    {
+        val xa = new XASAPResource(this)
+        xa
+    }
+
     /**
      * Gets the metadata information for this connection's underlying
      * EIS resource manager instance.
@@ -131,29 +165,65 @@ class SAPManagedConnection(mcf: SAPManagedConnectionFactory) extends ManagedConn
      */
     @throws(classOf[ResourceException])
     def getMetaData(): ManagedConnectionMetaData =
-        {
-            return new SAPManagedConnectionMetaData()
-        }
+    {
+        return new SAPManagedConnectionMetaData()
+    }
+
     /**
      * Call helloWorld
      * @param name String name
      * @return String helloworld
      */
     def helloWorld(name: String) =
-        {
-            "Hello World, " + name + " !"
+    {
+        if(currentTxId == null) throw new IllegalStateException("XID not yet set - was transaction started?")
+        if(tryWasSuccessful != null) throw new IllegalStateException("not closed?")
+
+        try{
+            val r = this.webService.trySomeBusinessMethod(name, currentTxId)
+            tryWasSuccessful = true
+            r
+        }catch{
+            case e: Exception => {
+                tryWasSuccessful = false
+                throw e;
+            }
         }
+    }
 
     /**
      * Close handle
      * @param handle The handle
      */
     def closeHandle(handle: SAPConnection) {
+        
         val event = new ConnectionEvent(this, ConnectionEvent.CONNECTION_CLOSED)
         event.setConnectionHandle(handle)
         listeners.foreach {
             _.connectionClosed(event)
         }
+        
+        currentTxId = null
     }
 
+    /** 
+     * was the call to the try method successful? 
+     * used by the XAResource to determine if PREPARE can
+     * return OK or NOK.
+     * 
+     * @throws IllegalStateException if the call to try has not yet occurred
+     */
+    def wasTrySuccessful = {
+        if(this.tryWasSuccessful == null){
+            throw new IllegalStateException("not expecting a call to wasTrySuccessful at this time")
+        }else{
+            tryWasSuccessful
+        }
+    }
+    
+    def setCurrentTxId(txId: String){
+        if(currentTxId != null) throw new IllegalStateException("not ready for a new transaction - was this connection closed?")
+
+        this.currentTxId = txId
+    }
 }

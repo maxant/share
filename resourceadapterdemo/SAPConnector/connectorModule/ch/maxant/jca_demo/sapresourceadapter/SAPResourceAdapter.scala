@@ -10,11 +10,20 @@ import javax.resource.spi.ActivationSpec
 import javax.resource.spi.BootstrapContext
 import javax.resource.spi.ResourceAdapterInternalException
 import javax.transaction.xa.XAResource
+import scala.beans.BeanProperty
+import java.util.logging.Logger
+import java.util.logging.Level
+import org.jboss.jca.core.spi.recovery.RecoveryPlugin
+
+/* TODO https://community.jboss.org/thread/229857 */
 
 /** a resource adapter into the SAP world via a non-transactional web service which suports the TCC pattern */
 @Connector(reauthenticationSupport = false, transactionSupport = XATransaction)
-class SAPResourceAdapter extends ResourceAdapter {
+class SAPResourceAdapter extends ResourceAdapter with RecoveryPlugin {
 
+    private val log = Logger.getLogger(this.getClass().getName())
+    
+    @BeanProperty
     @ConfigProperty(defaultValue = "http://localhost:8080/SAPService", supportsDynamicUpdates = true)
     var url: String = _
 
@@ -27,7 +36,7 @@ class SAPResourceAdapter extends ResourceAdapter {
      */
     @throws(classOf[ResourceException])
     def endpointActivation(endpointFactory: MessageEndpointFactory, spec: ActivationSpec) {
-        println("activating sap endpoint")
+        log.log(Level.INFO, "activating sap endpoint")
     }
 
     /**
@@ -37,7 +46,7 @@ class SAPResourceAdapter extends ResourceAdapter {
      * @param spec An activation spec JavaBean instance.
      */
     def endpointDeactivation(endpointFactory: MessageEndpointFactory, spec: ActivationSpec) {
-        println("deactivating sap endpoint")
+        log.log(Level.INFO, "deactivating sap endpoint")
     }
 
     /**
@@ -48,7 +57,7 @@ class SAPResourceAdapter extends ResourceAdapter {
      */
     @throws(classOf[ResourceAdapterInternalException])
     def start(ctx: BootstrapContext) {
-        println("starting resource adapter")
+        log.log(Level.INFO, "starting resource adapter")
     }
 
     /**
@@ -56,7 +65,7 @@ class SAPResourceAdapter extends ResourceAdapter {
      * during application server shutdown.
      */
     def stop() {
-        println("stopping resource adapter")
+        log.log(Level.INFO, "stopping resource adapter")
     }
 
     /**
@@ -68,7 +77,7 @@ class SAPResourceAdapter extends ResourceAdapter {
      */
     @throws(classOf[ResourceException])
     def getXAResources(specs: Array[ActivationSpec]): Array[XAResource] = {
-        println("getting xa resources")
+        log.log(Level.INFO, "getting xa resources")
         null
     }
 
@@ -86,4 +95,15 @@ class SAPResourceAdapter extends ResourceAdapter {
         case _ => false
     }
 
+    @throws(classOf[ResourceException])
+    override def close(arg0: Object){
+        log.log(Level.INFO, "Recovery plugin closing " + arg0)
+    }
+    
+    @throws(classOf[ResourceException])
+    override def isValid(arg0: Object) = {
+        log.log(Level.INFO, "Recovery plugin checking validity of " + arg0)
+        true
+    }
+    
 }

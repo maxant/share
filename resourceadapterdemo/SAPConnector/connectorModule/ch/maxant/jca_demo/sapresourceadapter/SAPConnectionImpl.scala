@@ -6,14 +6,6 @@ class SAPConnectionImpl(mc: SAPManagedConnection, mcf: ManagedConnectionFactory)
 
     /**
      * Call helloWorld
-     * @return String helloworld
-     */
-    def helloWorld() = {
-        helloWorld(/*todo how to get name from resource adapter? mcf.getResourceAdapter().asInstanceOf[SAPResourceAdapter].getName()*/"someName")
-    }
-
-    /**
-     * Call helloWorld
      * @param name String name
      * @return String helloworld
      */
