@@ -61,7 +61,7 @@ public class TestTwo {
 			}));
 
 			//register a callback, to be called when the work is done
-			log("mapping future");
+			log("adding mapping callback to future");
 			final Future<Integer> f2 = f.map(new Function1<Try<String>, Integer>(){
 				@Override
 				public Integer apply(Try<String> s) throws Exception {

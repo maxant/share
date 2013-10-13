@@ -56,7 +56,7 @@ public class TestTwoJava8 {
 
 			// PART 2
 			//register a callback, to be called when the work is done
-			log("mapping future");
+			log("adding mapping callback to future");
 			final Future<Integer> f2 = f.map( (Try<String> stringNumber) -> {
 				return stringNumber.map( (String s) -> {
 					log("mapping '" + s + "' to int");
